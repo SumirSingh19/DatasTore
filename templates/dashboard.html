@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-5">
+    <h2>Dashboard</h2>
+    <form method="POST" class="mb-3">
+        {% csrf_token %}
+        <div class="row">
+            <div class="col-md-3">
+                <label for="start_date" class="form-label">Start Date:</label>
+                <input type="date" class="form-control" id="start_date" name="start_date" value="{{ start_date|date:'Y-m-d' }}">
+            </div>
+            <div class="col-md-3">
+                <label for="end_date" class="form-label">End Date:</label>
+                <input type="date" class="form-control" id="end_date" name="end_date" value="{{ end_date|date:'Y-m-d' }}">
+            </div>
+            <div class="col-md-3">
+                <label for="user_select" class="form-label">Select Users:</label>
+                <div class="dropdown">
+                    <button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" aria-expanded="false">
+                        {{ selected_users|length }} User(s) Selected
+                    </button>
+                    <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                        <li>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="selectAll" />
+                                <label class="form-check-label" for="selectAll">Select All</label>
+                            </div>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        {% for user in all_users %}
+                            <li>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="user{{ user.id }}" name="selected_users" value="{{ user.id }}"
+                                        {% if user.id in selected_users %}checked{% endif %}>
+                                    <label class="form-check-label" for="user{{ user.id }}">{{ user.username }}</label>
+                                </div>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary mt-3">Go</button>
+    </form>
+    
+    {% if start_date and end_date %}
+        <p>Showing data from {{ start_date|date:"d-m-Y" }} to {{ end_date|date:"d-m-Y" }}</p>
+    {% else %}
+        <p>Showing all data</p>
+    {% endif %}
+
+    <div class="mb-3">
+        <button id="exportExcel" class="btn btn-success">Export to Excel</button>
+    </div>
+
+    <table class="table table-striped table-hover" id="dashboardTable">
+        <thead>
+            <tr>
+                <th scope="col">Names</th>
+                {% for date in date_range %}
+                    <th scope="col">{{ date|date:"d-m-Y" }}</th>
+                {% endfor %}
+                <th scope="col">Total</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for username, data in user_data.items %}
+                <tr>
+                    <td>{{ username }}</td>
+                    {% for record in data.daily_records %}
+                        <td>
+                            {% if user.is_superuser or user.is_staff %}
+                                <span class="editable" data-id="{{ record.id }}" data-type="{{ record.type }}">
+                                    {% if record.type == 'leave' %}Leave{% else %}{{ record.value }}{% endif %}
+                                </span>
+                            {% else %}
+                                {% if record.type == 'leave' %}Leave{% else %}{{ record.value }}{% endif %}
+                            {% endif %}
+                        </td>
+                    {% endfor %}
+                    <td>{{ data.total }}</td>
+                </tr>
+            {% endfor %}
+            <tr>
+                <td><strong>Total</strong></td>
+                {% for total in daily_totals %}
+                    <td><strong>{{ total }}</strong></td>
+                {% endfor %}
+                <td><strong>{{ grand_total }}</strong></td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- Add Chart.js and Chart.js Data Labels Plugin -->
+<div class="container mt-5">
+    <h2>File Count Over Time</h2>
+    <canvas id="myChart" width="400" height="200"></canvas>
+</div>
+
+<!-- Add necessary scripts -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.0.0/chartjs-plugin-datalabels.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+    // Editable cells
+    document.querySelectorAll('.editable').forEach(function(element) {
+        element.addEventListener('click', function() {
+            var value = this.innerText;
+            var id = this.dataset.id;
+            var type = this.dataset.type;
+            var newValue = prompt("Enter new value:", value);
+            if (newValue !== null) {
+                fetch('/update_record/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': '{{ csrf_token }}'
+                    },
+                    body: JSON.stringify({id: id, value: newValue, type: type})
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        this.innerText = type === 'leave' ? 'Leave' : newValue;
+                        location.reload(); // Refresh to update totals
+                    } else {
+                        alert('Failed to update. Please try again.');
+                    }
+                });
+            }
+        });
+    });
+
+    // Export to Excel
+    document.getElementById('exportExcel').addEventListener('click', function() {
+        var wb = XLSX.utils.table_to_book(document.getElementById('dashboardTable'), {sheet:"Dashboard"});
+        XLSX.writeFile(wb, 'Dashboard_Report.xlsx');
+    });
+
+    
+    document.addEventListener('DOMContentLoaded', function() {
+    var ctx = document.getElementById('myChart').getContext('2d');
+    var myChart = new Chart(ctx, {
+        type: 'bar',
+        plugins: [ChartDataLabels],
+        data: {
+            labels: {{ chart_labels|safe }},
+            datasets: [{
+                label: 'Number of Files',
+                data: {{ chart_data|safe }},
+                backgroundColor: 'rgba(173, 216, 230, 0.8)', // Light blue color
+                borderColor: 'rgba(173, 216, 230, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                datalabels: {
+                    color: '#000',
+                    anchor: 'end',
+                    align: 'top',
+                    offset: 5,
+                    font: {
+                        weight: 'bold',
+                        size: 14
+                    },
+                    formatter: function(value) {
+                        return value;
+                    },
+                    display: function(context) {
+                        return context.dataset.data[context.dataIndex] !== 0; // Hide label if value is 0
+                    }
+                },
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                x: {
+                    title: {
+                        display: false // Remove x-axis title
+                    },
+                    ticks: {
+                        autoSkip: false
+                    },
+                    grid: {
+                        display: false // Remove vertical grid lines
+                    }
+                },
+                y: {
+                    title: {
+                        display: true,
+                        text: 'Number of Files'
+                    },
+                    beginAtZero: true,
+                    suggestedMax: Math.max(...{{ chart_data|safe }}) + 5, // Add some space above the highest bar
+                    ticks: {
+                        stepSize: 5
+                    }
+                }
+            },
+            layout: {
+                padding: {
+                    top: 20 // Add some padding to the top of the chart
+                }
+            }
+        }
+    });
+
+    // Set the size of the chart
+    ctx.canvas.parentNode.style.height = '400px';
+    ctx.canvas.parentNode.style.width = '100%';
+});
+    // Select/Deselect All Users
+    document.getElementById('selectAll').addEventListener('change', function() {
+        var isChecked = this.checked;
+        document.querySelectorAll('.dropdown-menu .form-check-input').forEach(function(checkbox) {
+            checkbox.checked = isChecked;
+        });
+    });
+</script>
+{% endblock %}

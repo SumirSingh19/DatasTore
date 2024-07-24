@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container m-5 p-5">
+    <div class="row">
+        <div class="col-md-6">
+            <div class="mb-3">
+                <p>Username: {{ user.username }} </p>
+            </div>
+            <form method="POST" id="dataForm">
+                {% csrf_token %}
+                <div class="mb-3">
+                    <label for="dateInput" class="form-label">Select a Date:</label>
+                    <input type="date" class="form-control" id="dateInput" name="date" max="{{ today|date:'Y-m-d' }}" value="{{ today|date:'Y-m-d' }}" required>
+                </div>
+                <div class="mb-3 form-check">
+                    <input type="checkbox" class="form-check-input" id="leaveCheckbox" name="is_leave">
+                    <label class="form-check-label" for="leaveCheckbox">Leave</label>
+                </div>
+                <div class="mb-3" id="fieldsInput">
+                    <label for="numberInput" class="form-label">Enter Number of Files:</label>
+                    <input type="number" class="form-control" id="numberInput" name="fields" value="0" min="0">
+                </div>
+                <button type="submit" class="btn btn-primary">Save</button>
+                {% if user.is_authenticated %}
+                    <a href="{% url "logout" %}" class="btn btn-outline-danger">Logout</a>
+                {% endif %}
+                {% if user.is_superuser or user.is_staff %}
+                    <a href="/admin" class="btn btn-dark">Admin panel</a>
+                    <a href="{% url "dashboard" %}" class="btn btn-dark">Dashboard</a>
+                    <a href="{% url "statusrecord" %}" class="btn btn-dark">View Status</a>
+                {% endif %}
+            </form>
+            {% if messages %}
+            <div class="mt-3">
+                {% for message in messages %}
+                <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="container mt-5">
+    <h2>Your Records</h2>
+    <form method="GET" class="mb-3">
+        <div class="row">
+            <div class="col-md-4">
+                <label for="start_date" class="form-label">Start Date:</label>
+                <input type="date" class="form-control" id="start_date" name="start_date" value="{{ start_date|date:'Y-m-d' }}">
+            </div>
+            <div class="col-md-4">
+                <label for="end_date" class="form-label">End Date:</label>
+                <input type="date" class="form-control" id="end_date" name="end_date" value="{{ end_date|date:'Y-m-d' }}">
+            </div>
+            <div class="col-md-4 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary">Go</button>
+            </div>
+        </div>
+    </form>
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Type</th>
+                <th>Value</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for record in records %}
+            <tr>
+                <td>{{ record.date|date:"d-m-Y" }}</td>
+                <td>{% if record.is_leave %}Leave{% else %}Work{% endif %}</td>
+                <td>{% if record.is_leave %}Leave{% else %}{{ record.field }}{% endif %}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="3">No records found for the selected date range.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var leaveCheckbox = document.getElementById('leaveCheckbox');
+    var fieldsInput = document.getElementById('fieldsInput');
+    var numberInput = document.getElementById('numberInput');
+
+    leaveCheckbox.addEventListener('change', function() {
+        if (this.checked) {
+            fieldsInput.style.display = 'none';
+            numberInput.value = 0;
+        } else {
+            fieldsInput.style.display = 'block';
+        }
+    });
+});
+</script>
+{% endblock content %}
